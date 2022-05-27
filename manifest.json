@@ -1,15 +1,18 @@
 {
-  "name": "幕布小助手",
-  "description": "获取幕布文章下载到本地",
-  "version": "1.0",
+  "name": "幕布批量导出助手",
+  "description": "获取幕布文章批量下载到本地",
+  "version": "1.0.1",
   "manifest_version": 2,
+  "minimum_chrome_version": "55.0.0",
   "permissions": [
     "tabs",
     "cookies",
-    "<all_urls>"
+    "\u003Call_urls\u003E"
   ],
   "browser_action": {
-    "default_popup": "popup.html"
+    "default_icon": "images/icon-48.png",
+    "default_popup": "popup.html",
+    "default_title": "幕布批量导出助手"
   },
   "icons": {
     "16": "images/icon-16.png",
