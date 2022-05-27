@@ -1,0 +1,25 @@
+{
+  "name": "mubu-chrome-plugin",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/core": "^7.17.10",
+    "@babel/plugin-transform-runtime": "^7.17.10",
+    "@babel/preset-env": "^7.17.10",
+    "@babel/runtime": "^7.17.9",
+    "babel-loader": "^8.2.5",
+    "clean-webpack-plugin": "^4.0.0",
+    "copy-webpack-plugin": "^10.2.4",
+    "html-webpack-plugin": "^5.5.0",
+    "webpack": "^5.72.0",
+    "webpack-cli": "^4.9.2"
+  },
+  "scripts": {
+    "dev": "webpack -w",
+    "build": "webpack"
+  },
+  "dependencies": {
+    "htmlparser2": "^8.0.1"
+  }
+}
