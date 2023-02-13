@@ -20,6 +20,8 @@
     "build": "webpack"
   },
   "dependencies": {
-    "htmlparser2": "^8.0.1"
+    "file-saver": "^2.0.5",
+    "htmlparser2": "^8.0.1",
+    "jszip": "^3.10.1"
   }
 }

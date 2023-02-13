@@ -1,7 +1,7 @@
 {
   "name": "幕布批量导出助手",
   "description": "获取幕布文章批量下载到本地",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "manifest_version": 2,
   "minimum_chrome_version": "55.0.0",
   "permissions": [

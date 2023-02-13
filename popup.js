@@ -1,4 +1,6 @@
 import * as htmlparser2 from "htmlparser2";
+import { saveAs } from 'file-saver';
+const JSZip = require("jszip");
 const changeColor = document.getElementById("changeColor");
 const docPwdEle = document.getElementById("docPwd");
 let docNum = 0 // 文章总数
@@ -16,56 +18,91 @@ changeColor.addEventListener('click', () => {
     });
 })
 
-/**
- * @description: 获取所文章
- * @param {*} cookies
- * @return {*}
- */
+// 获取所有文件夹和文档
 async function handleGetAllDoc(cookies) {
     const { value } = cookies.find(v => v.name === 'Jwt-Token') || {}
     const headers = { 'Content-Type': 'application/json', 'jwt-token': value }
     const allPageRes = await fetchPost('https://api2.mubu.com/v3/api/list/get_all_documents_page', { start: '' }, headers)
-    if (allPageRes.code === 0) {
-        const foldersList = allPageRes.data.folders || []
-        const docList = allPageRes.data.documents || []
-        handleStartProgreess(docList.length)
-        const allContentStr = await handleGetContent(foldersList, docList, headers)
-        downloadFile(allContentStr, `幕布文章(共${docList.length}篇)`)
+    if (allPageRes.code === 0) handleListToTree(allPageRes.data, headers)
+}
+
+// 把返回的文件夹和文件转换成树形结构
+function handleListToTree(data, headers) {
+    const { root_relation = "[]", folders = [], documents = [] } = data || {};
+    handleStartProgreess(documents.length)
+    documents.forEach((item) => (item.type = "doc"));
+    const folderDocList = [...documents, ...folders];
+    const rootFolderList = handleSortRelation(folderDocList, root_relation, "0");
+    handleDeepFolder(rootFolderList, folderDocList);
+    handledownloadFile(rootFolderList, folders, documents, headers)
+}
+
+// 给文件夹添加子级
+function handleDeepFolder(rootFolderList, folderDocList) {
+    for (let i = 0; i < rootFolderList.length; i++) {
+        const item = rootFolderList[i];
+        const childrenList = handleSortRelation(folderDocList, item.relation, item.id);
+        if (childrenList.length) {
+            item.children = childrenList;
+            handleDeepFolder(childrenList, folderDocList);
+        }
     }
 }
-/**
- * @description: 遍历文章组合文章内容
- * @param {*} foldersList
- * @param {*} docList
- * @param {*} headers
- * @return {*}
- */
-async function handleGetContent(foldersList, docList, headers) {
-    let allContentStr = '%% mubu_export\r\n'
-    for (let i = 0; i < docList.length; i++) {
-        try {
-            const data = { docId: docList[i].id, password: docPwdEle.value || '' }
-            const res = await fetchPost('https://api2.mubu.com/v3/api/document/edit/get', data, headers)
-            if (res.code === 0) {
-                const { name, definition } = res.data || {}
-                const content = definition && JSON.parse(definition)
-                const contentStr = handleGetContentItem(content.nodes)
-                const folderNames = handleGetFolderName(foldersList, docList[i].folderId)
-                allContentStr = `${allContentStr}---\r\n${folderNames}\r\n# ${name}\r\n${contentStr}`
-            }
+
+// 返回子级文件并根据relation排序
+function handleSortRelation(folderDocList, relation, id) {
+    let childrenList = folderDocList.filter((v) => v.folderId === id);
+    const relations = relation && JSON.parse(relation);
+    if (relations) childrenList = relations.map((v) => childrenList.find((t) => t.id === v.id));
+    return childrenList;
+}
+
+// 递归下载文件夹和文件
+async function handledownloadFile(rootFolderList, folders, documents, headers) {
+    const zip = new JSZip();
+    zip.file(`使用说明.txt`, '1. 单篇文稿按照目录结构导出为单个txt文件\r\n2. 把需要导入到软件中的txt文件拖拽到软件中即可\r\n3. 由于图片是在线图片，导入到软件中会重新下载图片，请在联网的情况下导入\r\n4. 有时把txt文件拖到软件中会感觉没反应，请不要着急，等图片加载完之后就可以了');
+    await handleDeepList(rootFolderList, folders, headers, zip)
+    zip.generateAsync({ type: "blob" }).then(function (content) {
+        saveAs(content, `幕布文章(共${documents.length}篇).zip`);
+    });
+}
+
+// 递归文件夹下的文章
+async function handleDeepList(rootFolderList, folders, headers, zip) {
+    for (let i = 0; i < rootFolderList.length; i++) {
+        const item = rootFolderList[i];
+        if (item.type === "doc") {
+            const folderNames = handleGetFolderName(folders, item.folderId);
+            const allContentStr = await handleGetDocStr(item.id, folderNames, headers)
+            const folder = zip.folder(folderNames);
+            // 文件中过多图片情况处理
+            const imagesList = (allContentStr && allContentStr.match(/<img\s+src=".*?"\s*\/>/gi)) || [];
+            const fileName = imagesList.length > 100 ? `${item.name}(文件中图片数量超过100, 可能无法加载该文件).txt` : `${item.name}.txt`
+            folder.file(fileName, allContentStr);
             curDocNum++
             handleEndProgreess(curDocNum)
-        } catch (error) { error }
+        }
+        if (item.children) await handleDeepList(item.children, folders, headers, zip)
+    }
+}
+
+// 获取文章内容
+async function handleGetDocStr(docId, folderNames, headers) {
+    let allContentStr = '%% mubu_export\r\n'
+    const data = { docId, password: docPwdEle.value || '' }
+    const res = await fetchPost('https://api2.mubu.com/v3/api/document/edit/get', data, headers)
+    if (res.code === 0) {
+        const { name, definition } = res.data || {}
+        const content = definition && JSON.parse(definition)
+        const contentStr = handleGetContentItem(content.nodes)
+        allContentStr = `${allContentStr}---\r\n${folderNames}\r\n# ${name}\r\n${contentStr}`
+    } else if (res.code === 2003) {
+        allContentStr = `${allContentStr}---\r\n此文章为加密文章，请输入密码后重新下载!!!`
     }
     return allContentStr
 }
 
-/**
- * @description: 获取当前文章所属的各级文件夹名称
- * @param {*} foldersList
- * @param {*} folderId
- * @return {*}
- */
+// 获取当前文章所属的各级文件夹名称
 function handleGetFolderName(foldersList, folderId) {
     let folderNames = ''
     const deepFolderName = (folderId) => {
@@ -77,11 +114,7 @@ function handleGetFolderName(foldersList, folderId) {
     return `@我的文档${folderNames}`
 }
 
-/**
- * @description: 递归查询文本和图片
- * @param {*} contentNodes
- * @return {*}
- */
+// 递归查询文本和图片
 function handleGetContentItem(contentNodes) {
     let contentStr = ''
     const deepContent = (contentNodes, level = 0) => {
@@ -99,11 +132,7 @@ function handleGetContentItem(contentNodes) {
     return contentStr
 }
 
-/**
- * @description: 处理html标签转化为md
- * @param {*} content
- * @return {*}
- */
+// 处理html标签转化为md
 function handleHtmlToMd(content) {
     let str = ''
     let isBold = false
@@ -146,11 +175,7 @@ function handleHtmlToMd(content) {
     return str && str.replace(/class=".*?"/, "")
 }
 
-/**
- * @description: 开始下载进度
- * @param {*} docListLength
- * @return {*}
- */
+// 开始下载进度
 function handleStartProgreess(docListLength) {
     curDocNum = 0
     docNum = docListLength
@@ -158,11 +183,7 @@ function handleStartProgreess(docListLength) {
     changeColor.innerHTML = `文章正在下载中(${curDocNum}/${docNum})...`
 }
 
-/**
- * @description: 结束下载进度
- * @param {*} curDocNum
- * @return {*}
- */
+// 结束下载进度
 function handleEndProgreess(curDocNum) {
     changeColor.innerHTML = `文章正在下载中(${curDocNum}/${docNum})...`
     if (curDocNum === docNum) {
@@ -171,14 +192,7 @@ function handleEndProgreess(curDocNum) {
     }
 }
 
-/**
- * @description: 封装fetch的post方法
- * @param {*} url
- * @param {*} data
- * @param {*} headers
- * @param {*} method
- * @return {*}
- */
+// 封装fetch的post方法
 function fetchPost(url, data, headers, method = 'POST') {
     return new Promise((resolve, reject) => {
         fetch(url, { method, headers, body: JSON.stringify(data) })
@@ -186,21 +200,4 @@ function fetchPost(url, data, headers, method = 'POST') {
             .then(res => resolve(res))
             .catch(err => reject(err))
     })
-}
-
-/**
- * @description: 文件下载
- * @param {*} content
- * @param {*} filename
- * @return {*}
- */
-function downloadFile(content, filename) {
-    const blob = new Blob([content])
-    var a = document.createElement("a")
-    a.setAttribute("href", URL.createObjectURL(blob))
-    a.setAttribute("download", `${filename}.txt`)
-    a.setAttribute("target", "_blank")
-    const clickEvent = document.createEvent("MouseEvents")
-    clickEvent.initEvent("click", true, true);
-    a.dispatchEvent(clickEvent);
 }
