@@ -53,7 +53,7 @@ function handleDeepFolder(rootFolderList, folderDocList) {
 function handleSortRelation(folderDocList, relation, id) {
     let childrenList = folderDocList.filter((v) => v.folderId === id);
     const relations = relation && JSON.parse(relation);
-    if (relations) childrenList = relations.map((v) => childrenList.find((t) => t.id === v.id));
+    if (relation && relations.length) childrenList = relations.map((v) => childrenList.find((t) => t.id === v.id));
     return childrenList;
 }
 
@@ -115,7 +115,7 @@ function handleGetFolderName(foldersList, folderId) {
 }
 
 // 递归查询文本和图片
-function handleGetContentItem(contentNodes) {
+function handleGetContentItem(contentNodes = []) {
     let contentStr = ''
     const deepContent = (contentNodes, level = 0) => {
         contentNodes.forEach(item => {
